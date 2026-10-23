@@ -13,8 +13,9 @@ Submit the plan with submit_plan, once. Each step:
 - id: 1, 2, 3, ... in order.
 - action: what the step does, in a few words.
 - tool: exactly one tool from the list you are given, by its name.
-- args_json: the tool's arguments as a JSON object written as a string, for
-  example "{\"number\": 4191}". Write "$fill" for any value that depends on what an
+- args_json: the tool's arguments as a JSON object written as a string. The
+  string's text is plain JSON, for example {"issue_number": 4191}, with no
+  backslashes before its quotes. Write "$fill" for any value that depends on what an
   earlier step finds: search terms, a file path, the comment's text. The issue
   number is the one value you know now.
 - depends_on: the ids of earlier steps whose results this step uses. Never a later
@@ -24,5 +25,10 @@ Submit the plan with submit_plan, once. Each step:
 - status: "pending".
 
 A good triage plan is short: read the issue, search the code, read the file the
-search points to, post the comment. Every step's result is used by a later step,
-except the last. Never more than twelve steps.
+search points to, open the draft pull request, post the comment. Every plan ends
+with exactly one pulls_open_draft step and then exactly one tracker_post_comment
+step, the last: a pull request can be closed, a comment cannot be taken back. Plan
+the pull request step for every issue; the executor skips it when the triage names
+no file.
+Every step's result is used by a later step, except the last. Never more than
+twelve steps.

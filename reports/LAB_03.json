@@ -1,33 +1,62 @@
 {
   "lab": "03",
   "strict": {
-    "tools": null,
-    "optional_params": null,
-    "union_types": null,
-    "compiles": null
+    "tools": 5,
+    "optional_params": 0,
+    "union_types": 2,
+    "compiles": true
   },
   "failures": {
-    "read_issue": {"transient": [], "permanent": [], "ambiguous": []},
-    "search": {"transient": [], "permanent": [], "ambiguous": []},
-    "read_file": {"transient": [], "permanent": [], "ambiguous": []},
-    "comment": {"transient": [], "permanent": [], "ambiguous": []},
-    "open_pr": {"transient": [], "permanent": [], "ambiguous": []}
+    "read_issue": {
+      "transient": ["the issue file cannot be read for a moment (an OS error other than a missing file); retried in code, 3 attempts"],
+      "permanent": ["the issue number does not exist", "issue_number is not a positive integer, or is a string such as \"issue-4192\""],
+      "ambiguous": []
+    },
+    "search": {
+      "transient": ["the index, or with source disk a file, cannot be read for a moment; retried in code, 3 attempts"],
+      "permanent": ["the query is empty or only whitespace", "the query is longer than 200 characters",
+                    "path_glob is not a valid glob", "max_results is outside 1 to 20",
+                    "source or response_format is not one of its values"],
+      "ambiguous": []
+    },
+    "read_file": {
+      "transient": ["the file cannot be read for a moment (an OS error other than a missing file); retried in code, 3 attempts"],
+      "permanent": ["no such file, case included (near matches are named)", "the path is outside the repository",
+                    "the path is under config/", "the file is not text", "the path is empty or longer than 300 characters"],
+      "ambiguous": []
+    },
+    "comment": {
+      "transient": ["the tracker timed out before the write reached it (timeout_before_commit); the caller cannot tell this from the ambiguous case, so it is handled as ambiguous",
+                    "the read that checks for the comment is unavailable for a moment"],
+      "permanent": ["the issue does not exist", "the body is empty", "the body is longer than 4,000 characters",
+                    "the body's first two lines are not label: and file:"],
+      "ambiguous": ["the tracker timed out after the write was sent: the comment may have committed (timeout_after_commit)",
+                    "under READBACK_FAIL, the read that would settle whether it landed fails too"]
+    },
+    "open_pr": {
+      "transient": ["the tracker timed out before the write reached it (timeout_before_commit); handled as ambiguous, as for the comment",
+                    "the read that checks for an open PR on the branch is unavailable for a moment"],
+      "permanent": ["the issue does not exist", "the branch is not repomind/issue-<issue_number>",
+                    "the title is empty or longer than 120 characters", "the body is empty or longer than 4,000 characters"],
+      "ambiguous": ["the tracker timed out after the write was sent: the PR may have been opened (timeout_after_commit)",
+                    "under READBACK_FAIL, the read that would settle whether it landed fails too"]
+    }
   },
-  "protocol_error_policy": null,
+  "protocol_error_policy": "end_run",
   "surface": {
-    "tokens_before": null,
-    "tokens_after": null,
-    "list_tokens_before": null,
-    "list_tokens_after": null,
-    "calls_per_run": null,
-    "cost_per_run_before": null,
-    "cost_per_run_after": null,
-    "cost_per_run_all_five": null
+    "tokens_before": 386,
+    "tokens_after": 3367,
+    "list_tokens_before": 117,
+    "list_tokens_after": 2109,
+    "calls_per_run": 5.83,
+    "cost_per_run_before": 0.000166,
+    "cost_per_run_after": 0.002063,
+    "cost_per_run_all_five": 0.005892
   },
   "writes": {
-    "harness": {"runs": null, "comments_per_run_max": null, "duplicate_comment_runs": null, "prs_correct_runs": null,
-                "committed_timeouts": null, "escalated": null, "triage_passes": null},
-    "control": {"runs": null, "comments_per_run_max": null, "duplicate_comment_runs": null, "prs_correct_runs": null,
-                "committed_timeouts": null, "escalated": null, "triage_passes": null}
+    "harness": {"runs": 12, "comments_per_run_max": 1, "duplicate_comment_runs": 0, "prs_correct_runs": 12,
+                "committed_timeouts": 14, "escalated": 0, "triage_passes": 5},
+    "control": {"runs": 12, "comments_per_run_max": 3, "duplicate_comment_runs": 6, "prs_correct_runs": 12,
+                "committed_timeouts": 15, "escalated": 4, "triage_passes": 2}
   }
 }

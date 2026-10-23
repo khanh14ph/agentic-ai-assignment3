@@ -20,10 +20,20 @@ def step_args(step: dict) -> dict:
     """A step's arguments, from `args` or from `args_json`."""
     if isinstance(step.get("args"), dict):
         return step["args"]
+    text = step.get("args_json") or "{}"
     try:
-        args = json.loads(step.get("args_json") or "{}")
+        args = json.loads(text)
     except (TypeError, ValueError):
-        return {}
+        # A model may escape the quotes once too often: {\"issue_number\": 4192}.
+        try:
+            args = json.loads(str(text).replace('\\"', '"'))
+        except ValueError:
+            return {}
+    if isinstance(args, str):   # or encode the object twice, as a JSON string
+        try:
+            args = json.loads(args)
+        except ValueError:
+            return {}
     return args if isinstance(args, dict) else {}
 
 

@@ -1,14 +1,85 @@
 {
-  "name": "search_repo",
-  "description": "Search the code.",
+  "name": "code_search",
+  "description": "Search the text of Ledgerline's private codebase (every text file under the repository root except config/) for a literal, case-insensitive substring. It matches inside lines, never file names: search for a quoted error message, an identifier or a word a developer would write, not for a path. Use it to find which files mention what an issue describes, then open the most likely one with code_read_file.\n\nReturns JSON: {\"query\", \"query_valid\": true, \"path_glob\", \"source\", \"response_format\", \"count\" (matching lines in all), \"files\" (files with a match), \"shown\" (entries returned), \"truncated\", \"note\", \"index_age\", \"results\": [...]}. Results are in path order. Each entry has a \"path\" relative to the repository root, which code_read_file takes as it is.\n\nAn empty result is a success, not an error: nothing matched, so count is zero, results is [] and query_valid is true. Try a shorter or different term, or drop path_glob. A malformed search is an error result instead, and nothing is searched: an empty or whitespace-only query, a query longer than 200 characters (the cap), or a path_glob that is not a valid glob.\n\nEvery response is capped, and says so. At most max_results entries come back (10 unless you ask, never more than 20). When more matched, truncated is true and note says how many were left out, so narrow the query or add a path_glob rather than asking again; when nothing was left out, note says the result is complete. In detailed format an excerpt is at most 160 characters, and a longer line ends in \"[line cut]\". index_age says how old the index is (source \"index\"); it is null when the files were read from disk.",
+  "strict": true,
   "input_schema": {
     "type": "object",
     "properties": {
-      "query": {"type": "string", "description": "Text to look for"},
-      "max_results": {"type": "integer", "description": "How many results. Default 10."},
-      "filter": {"type": "string", "description": "Optional filter expression"},
-      "deep": {"type": "boolean", "description": "Whether to do a deep search. Default false."}
+      "query": {
+        "type": "string",
+        "description": "The literal text to find, 1 to 200 characters, matched case-insensitively as a substring of each line. No operators, wildcards, quotes or regular expressions: every character is matched as written. A short, specific term (an identifier, a fragment of an error message) finds the responsible code; a long sentence usually matches nothing."
+      },
+      "path_glob": {
+        "type": ["string", "null"],
+        "description": "Search only the files whose path, relative to the repository root, matches this glob: * matches within a directory, ** across directories, ? one character, [abc] one of a set, {ts,tsx} alternatives. For example src/**/*.ts or docs/*.md. No leading /, no .., no spaces. Set it to cut a broad term's results down to one part of the codebase; pass null to search every file, which is the right first search."
+      },
+      "max_results": {
+        "type": ["integer", "null"],
+        "description": "How many entries to return, 1 to 20; null means 10. More entries cost more tokens and rarely help: if the first 10 do not show the file, a better query will. A value outside 1 to 20 is refused."
+      },
+      "source": {
+        "type": "string",
+        "enum": ["index", "disk"],
+        "description": "Where the text comes from. \"index\": the prebuilt search index, fast, but only as current as index_age says. \"disk\": reads every file now, slower but always current. Choose \"index\" first; choose \"disk\" only when the index is old and a search that should match found nothing, or a result looks stale."
+      },
+      "response_format": {
+        "type": "string",
+        "enum": ["concise", "detailed"],
+        "description": "\"concise\", the cheap default: one entry per file, {\"path\", \"matches\", \"first_line\"}, enough to see which files mention the term. Choose it unless you have a reason not to. \"detailed\": one entry per matching line, {\"path\", \"line\", \"excerpt\"}, with up to 160 characters of the line, several times the tokens, when you need to see how the term is used before choosing a file. max_results caps the entries either way."
+      }
     },
-    "required": ["query"]
-  }
+    "required": ["query", "path_glob", "max_results", "source", "response_format"],
+    "additionalProperties": false
+  },
+  "rules": {
+    "query": {"min_length": 1, "max_length": 200},
+    "path_glob": {"glob": true},
+    "max_results": {"min": 1, "max": 20}
+  },
+  "result": {
+    "json": {
+      "type": "object",
+      "required": ["query", "query_valid", "path_glob", "source", "response_format", "count", "files", "shown",
+                   "truncated", "note", "index_age", "results"],
+      "properties": {
+        "query": {"type": "string"},
+        "query_valid": {"const": true},
+        "path_glob": {"type": ["string", "null"]},
+        "source": {"enum": ["index", "disk"]},
+        "response_format": {"enum": ["concise", "detailed"]},
+        "count": {"type": "integer"},
+        "files": {"type": "integer"},
+        "shown": {"type": "integer"},
+        "truncated": {"type": "boolean"},
+        "note": {"type": "string"},
+        "index_age": {"type": ["string", "null"]},
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": {"type": "string"},
+              "matches": {"type": "integer"},
+              "first_line": {"type": "integer"},
+              "line": {"type": "integer"},
+              "excerpt": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "input": {"query": "formatCurrency", "path_glob": null, "max_results": null, "source": "index", "response_format": "concise"},
+      "note": "Typical: a first search for an identifier across the whole codebase, one entry per file."
+    },
+    {
+      "input": {"query": "upload rejected", "path_glob": "src/api/*.ts", "max_results": 5, "source": "disk", "response_format": "detailed"},
+      "note": "Hard: an error message's text, narrowed to the API layer, read from disk because the index may predate the change, with each matching line shown."
+    }
+  ]
 }

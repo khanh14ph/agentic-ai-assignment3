@@ -14,6 +14,6 @@ Removals are logged like additions.
 - **Constrained:** every tool call to a step of a validated plan; revisions to steps not yet done; the comment to drafts that pass the second pass
 
 ## Assignment 3
-- **Added:**
-- **Removed:**
-- **Constrained:**
+- **Added:** five tool definitions, namespaced and strict, with examples; a boundary validator for every call and result; errors with a repair fact; idempotency keys, a check before every write and a read-back after a timeout; the call record and a pre-call hook; a draft PR before the comment
+- **Removed:** free-text tool descriptions and free-form filters; protocol errors shown to the model
+- **Constrained:** every write to be safe to retry: one key per action, at most three attempts, and a person when it cannot be confirmed

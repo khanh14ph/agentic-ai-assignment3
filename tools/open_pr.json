@@ -1,14 +1,47 @@
 {
-  "name": "open_pr",
-  "description": "Open a pull request.",
+  "name": "pulls_open_draft",
+  "description": "Open one draft pull request for an issue, from the branch repomind/issue-<number>, on Ledgerline's pull requests. The mock remote needs no commits: the pull request is its branch, title and body, and the body proposes the change in prose. Open it only when the triage names a file (never when the file is none), and before the triage comment, because a pull request can be closed and a comment cannot be taken back.\n\nReturns \"Opened draft pr-<id> from <branch> for issue-<number>.\" Opening it again for the same issue returns the first one, with nothing new opened. An empty branch or title is an error result and opens nothing, as is an issue number that does not exist. The title is limited to at most 120 characters and the body to at most 4,000; longer ones are refused, not truncated.",
+  "strict": true,
   "input_schema": {
     "type": "object",
     "properties": {
-      "number": {"type": "integer", "description": "Issue number"},
-      "branch": {"type": "string", "description": "Branch"},
-      "title": {"type": "string", "description": "Title"},
-      "body": {"type": "string", "description": "Body"}
+      "issue_number": {
+        "type": "integer",
+        "description": "The number of the issue the pull request is for, the one you read with tracker_read_issue: 4192 for issue-4192."
+      },
+      "branch": {
+        "type": "string",
+        "description": "Always repomind/issue-<issue_number>, for example repomind/issue-4192. One branch per issue is how a second attempt finds the first pull request instead of opening another, so never invent a different name."
+      },
+      "title": {
+        "type": "string",
+        "description": "1 to 120 characters: what the change does, in the imperative, naming the file. For example \"Fix rounding in src/util/money.ts\". Reviewers read only this in a list of pull requests."
+      },
+      "body": {
+        "type": "string",
+        "description": "1 to 4,000 characters, in Markdown: the first line names the file (\"File: <path as code_search printed it>\"), then a few sentences proposing the change and why it fixes the issue. Prose, not a diff: nothing is committed."
+      }
     },
-    "required": ["number", "branch", "title", "body"]
-  }
+    "required": ["issue_number", "branch", "title", "body"],
+    "additionalProperties": false
+  },
+  "rules": {
+    "issue_number": {"min": 1},
+    "branch": {"equals": "repomind/issue-{issue_number}"},
+    "title": {"min_length": 1, "max_length": 120},
+    "body": {"min_length": 1, "max_length": 4000}
+  },
+  "result": {
+    "pattern": "Opened draft pr-\\d+ from \\S+ for issue-\\d+\\."
+  },
+  "examples": [
+    {
+      "input": {"issue_number": 4192, "branch": "repomind/issue-4192", "title": "Fix rounding in src/util/money.ts", "body": "File: src/util/money.ts\n\nformatCurrency rounds before converting the currency. Convert first, then round once, so export totals match the ledger."},
+      "note": "Typical: a bug whose file the search and the read confirmed, opened before the comment."
+    },
+    {
+      "input": {"issue_number": 4188, "branch": "repomind/issue-4188", "title": "Add a delimiter option to src/export/csv.ts", "body": "File: src/export/csv.ts\n\nA feature request: let the CSV export take a delimiter, defaulting to a comma, so European users can choose a semicolon."},
+      "note": "Hard: a feature request, not a bug. The branch is still repomind/issue-<number>, never a name describing the feature, and the body proposes the new behaviour in the file where the change would mainly go."
+    }
+  ]
 }

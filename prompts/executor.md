@@ -5,11 +5,14 @@ fill in the arguments it left open, from the results of the steps before it.
 Call the one tool you are offered, once, and nothing else. Keep every argument the
 plan fixed.
 
-- search_repo: a short literal term likely to appear in the responsible code (a
+- code_search: a short literal term likely to appear in the responsible code (a
   quoted error message, an identifier, a word a developer would use). The search
   is a case-insensitive substring match over lines, never over file names.
-- read_file: one path exactly as a search result printed it.
-- post_comment: the comment, whose first two lines are
+- code_read_file: one path exactly as a search result printed it.
+- pulls_open_draft: the branch is always repomind/issue-<number>. The title names
+  the file and the change; the body's first line is "File: <path>", then a few
+  sentences proposing the change in prose.
+- tracker_post_comment: the comment, whose first two lines are
       label: <bug | feature | question | docs>
       file: <path relative to the repository root, or none>
   bug: something that should work does not (the file whose code is wrong).

@@ -46,6 +46,7 @@ from agent.plan import SCHEMA, make_plan, revise_plan
 from agent.validator import validate
 from harness.formats import FILL, format_triage_comment, parse_triage_comment, result_paths
 from harness.roles import ROLES, arg, tool_for
+from tools import ProtocolError, WriteUnconfirmed
 from harness.schema import errors as schema_errors
 
 MAX_REPLANS = 2       # three planner calls in all; a fourth on the same request is the same coin, so a person looks
@@ -74,17 +75,33 @@ def run(ctx) -> None:
     if plan is None:
         return
     ctx.trace.plan(1, plan)
-    Executor(ctx, plan).run()
+    try:
+        Executor(ctx, plan).run()
+    except ProtocolError as exc:
+        # protocol_error_policy end_run, as in agent/loop.py: logged in full, never shown to the model
+        if not ctx.trace.ended:
+            ctx.trace.end("tool_error", detail=f"protocol error: {exc}")
+    except WriteUnconfirmed as exc:
+        # The third exit (slide 40): a write that cannot be confirmed. Our code stops the
+        # run and asks a person; the model is never asked to guess.
+        if not ctx.trace.ended:
+            ctx.trace.end("escalated", detail=f"a write could not be confirmed: {exc}")
 
 
 def schema_check(ctx, plan: dict, version: int) -> list[dict]:
     """The plan as the planner's tool returned it, against agent/plan_schema.json. A
     failure is written as a schema line, and comes back as failures for a re-plan."""
     problems = schema_errors({k: v for k, v in plan.items() if k != "meta"}, SCHEMA)
-    steps = plan.get("steps") or []
-    if not steps or not isinstance(steps[-1], dict) or role(steps[-1].get("tool")) != "comment":
-        problems.append(f"the plan's last step is not the comment tool, {tool_for('comment')}: the comment "
-                        "comes last")
+    steps = [s for s in plan.get("steps") or [] if isinstance(s, dict)]
+    roles = [role(s.get("tool")) for s in steps]
+    # The writes' order (slide 41): one PR step, then one comment step, last. A PR can be
+    # closed; a comment, once read, cannot be taken back.
+    if roles.count("comment") != 1 or roles[-1:] != ["comment"]:
+        problems.append(f"the plan needs exactly one comment step, {tool_for('comment')}, and it must be the last "
+                        f"step: the comment comes last")
+    if roles.count("open_pr") != 1 or roles[-2:-1] != ["open_pr"]:
+        problems.append(f"the plan needs exactly one pull request step, {tool_for('open_pr')}, right before the "
+                        f"comment: the PR is opened first, because it can be closed and a comment cannot")
     if problems:
         ctx.trace.event("schema", version=version, errors=problems[:20])
     return [{"step": None, "check": "schema", "error": e} for e in problems[:5]]
@@ -122,6 +139,7 @@ class Executor:
         self.revisions = 0
         self.revised: set[str] = set()   # ids of steps a revision added or changed: the checkpoint follows them
         self.ran: set[str] = set()       # ids of steps that ran and are not to run again
+        self.draft: dict | None = None   # the comment's arguments, drafted and second-passed before the PR
 
     # -- the plan, in order ------------------------------------------------------------
     def next_step(self) -> dict | None:
@@ -134,6 +152,10 @@ class Executor:
                 return                            # the plan is finished; the runner writes completed
             if role(step.get("tool")) == "comment":
                 if not self.comment(step):
+                    return
+                continue
+            if role(step.get("tool")) == "open_pr":
+                if not self.open_pr(step):
                     return
                 continue
             first = not any(role(r["tool"]) == "search" for r in self.results)
@@ -263,17 +285,78 @@ class Executor:
 
     # -- the comment, and the second pass before it ----------------------------------------------
     def comment(self, step: dict) -> bool:
-        """Draft, run the second pass, then post once. False when the run has ended."""
+        """Post the draft once: the one drafted before the PR, or drafted now. False when
+        the run has ended."""
+        final = self.drafted(step)
+        if final is None:
+            return False
+        self.record(step, final, self.ctx.call_tool(self.calls, step["tool"], final, plan_step=step.get("id")))
+        return True
+
+    def drafted(self, step: dict | None = None) -> dict | None:
+        """The comment's arguments, drafted and through the second pass, once per run. The
+        PR needs the triage's file before the comment is posted, so this runs before the
+        PR step: the draft is the executor's work, not a step of the plan. None when the
+        run has ended: a draft the model will not write, or one the second pass holds,
+        ends it before either write."""
+        if self.draft is not None:
+            return self.draft
+        step = step or next((s for s in reversed(self.plan.get("steps") or [])
+                             if role(s.get("tool")) == "comment"), None)
+        if step is None:
+            return None
         draft = self.filled(step, step_args(step))
         if draft is None:
-            return False
+            return None
         final = self.second_pass(step, draft) if self.critique else draft
         if final is None:
             self.record(step, draft, None, "held")
             self.ctx.trace.end("escalated", detail=f"the draft still failed the second pass after {MAX_ROUNDS} rounds")
+            return None
+        self.draft = final
+        return final
+
+    def open_pr(self, step: dict) -> bool:
+        """The PR step: draft the comment first, then open the PR for the file it names, or
+        skip the PR when it names none (a check in the executor). False when the run has
+        ended; a PR that fails ends it too, before the comment, so a reader sees nothing."""
+        draft = self.drafted()
+        if draft is None:
             return False
-        self.record(step, final, self.ctx.call_tool(self.calls, step["tool"], final, plan_step=step.get("id")))
+        body = str(draft[arg("comment", "body")])
+        _, file = parse_triage_comment(body)
+        if file in (None, "none"):
+            self.skip(step, "the draft names no file, so no pull request is opened")
+            return True
+        args = step_args(step)
+        to_fill = [k for k, v in args.items() if v == FILL]
+        note = (f"The triage comment is already drafted. Open the pull request for the file it names, {file}; "
+                f"the body's first line is \"File: {file}\".\n\nThe draft:\n{body}")
+        filled = self.fill(step, args, to_fill, note=note) if to_fill else args
+        if filled is None:
+            self.record(step, args, None, "off_plan")
+            self.ctx.trace.end("escalated", detail=f"step {step.get('id')}: no on-plan call in {MAX_FILL_TRIES} tries")
+            return False
+        pr_body = arg("open_pr", "body")
+        if file not in str(filled.get(pr_body) or ""):     # the body names the file, whatever the model wrote
+            filled[pr_body] = f"File: {file}\n\n{filled.get(pr_body) or ''}".strip()
+        result = self.ctx.call_tool(self.calls, step["tool"], filled, plan_step=step.get("id"))
+        self.record(step, filled, result)
+        if result.is_error:
+            self.ctx.trace.end("escalated", detail=f"step {step.get('id')}: the pull request was not opened, so the "
+                                                   f"comment is not posted: {result.content[:200]}")
+            return False
         return True
+
+    def skip(self, step: dict, why: str) -> None:
+        """A step the executor decided not to run: done, with nothing called. The reason is
+        on the trace's skipped line, not in step_results, where a done step has no error_code."""
+        self.record(step, step_args(step), None)
+        self.results[-1].update({"status": "done", "error_code": None})
+        for s in self.plan.get("steps") or []:
+            if str(s.get("id")) == str(step.get("id")):
+                s["status"] = "done"
+        self.ctx.trace.event("skipped", step=step.get("id"), tool=step.get("tool"), reason=why)
 
     def evidence(self) -> dict:
         issue = next((self.outputs.get(str(r["id"]), "") for r in self.results if role(r["tool"]) == "read_issue"), "")

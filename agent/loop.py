@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from harness.client import tool_result
+from tools import ProtocolError, WriteUnconfirmed
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,15 @@ def run_loop(client, tools, system: str, user_message: str, bounds: Bounds, trac
         for call in response.tool_calls:
             try:
                 result = tools.call(call.name, call.input)
+            except ProtocolError as exc:
+                # protocol_error_policy end_run: no argument can fix it, so the model never
+                # sees it. The registry wrote it in full to the harness log.
+                trace.end("tool_error", detail=f"protocol error: {exc}")
+                return last_text
+            except WriteUnconfirmed as exc:
+                # The third exit: a write we cannot confirm. Stop and ask a person.
+                trace.end("escalated", detail=f"a write could not be confirmed: {exc}")
+                return last_text
             except Exception as exc:  # a tool that raises, rather than reporting an error
                 trace.end("tool_error", detail=f"{call.name}: {exc}")
                 return last_text

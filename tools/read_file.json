@@ -1,11 +1,37 @@
 {
-  "name": "read_file",
-  "description": "Read a file.",
+  "name": "code_read_file",
+  "description": "Read one text file of Ledgerline's private codebase, by its path relative to the repository root, exactly as code_search printed it. Use it after a search, to confirm that a file explains the issue before you name it. Files under config/ cannot be read.\n\nReturns a header line, \"path: <path> (<lines> lines, <characters> characters)\", then the file's text. An empty file is a success: the header says 0 lines and the text is \"(the file is empty)\". A path that does not exist, is outside the repository, or is not a text file is an error result, and nothing is returned of any file.\n\nEvery response is capped, and its last line says whether you have the whole file. The text is at most 4,000 characters in concise format and at most 20,000 in detailed. A whole file ends in \"[end of file: complete]\". A longer one is truncated, and ends in \"[truncated at <cap> of <total> characters, in line <n>: <how to read the rest>]\": in concise, call again with detailed; in detailed, search for the later lines with code_search and this file as path_glob. Never treat a truncated file as if you had read all of it.",
+  "strict": true,
   "input_schema": {
     "type": "object",
     "properties": {
-      "path": {"type": "string", "description": "File path"}
+      "path": {
+        "type": "string",
+        "description": "The file's path relative to the repository root, with forward slashes, as a code_search result prints it: src/util/money.ts, not ./fixtures/repo/src/util/money.ts or a bare file name. Paths are matched exactly, including case: src/Report.ts and src/report.tsx are different files."
+      },
+      "response_format": {
+        "type": "string",
+        "enum": ["concise", "detailed"],
+        "description": "\"concise\", the cheap default: the first 4,000 characters, enough for most files and for the top of a long one (imports, exports, the main function). Choose it first. \"detailed\": up to 20,000 characters, five times the tokens, only when a concise read came back truncated and the part you need is further down."
+      }
     },
-    "required": ["path"]
-  }
+    "required": ["path", "response_format"],
+    "additionalProperties": false
+  },
+  "rules": {
+    "path": {"min_length": 1, "max_length": 300}
+  },
+  "result": {
+    "pattern": "path: \\S+ \\(\\d+ lines, [\\d,]+ characters\\)\\n(\\(the file is empty\\)|.*\\n\\[(end of file: complete|truncated at [^\\]]+)\\])"
+  },
+  "examples": [
+    {
+      "input": {"path": "src/util/money.ts", "response_format": "concise"},
+      "note": "Typical: a path exactly as a search result printed it, read in the cheap format first."
+    },
+    {
+      "input": {"path": "src/export/scheduler.ts", "response_format": "detailed"},
+      "note": "Hard: a concise read came back truncated before the line a search pointed to, so the file is read again in detailed."
+    }
+  ]
 }

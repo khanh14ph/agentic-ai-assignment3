@@ -1,0 +1,28 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "base_prompt_tokens": 16,
+  "starter": {
+    "five": 386,
+    "alone": {
+      "read_issue": 51,
+      "search_repo": 114,
+      "read_file": 48,
+      "post_comment": 70,
+      "open_pr": 103
+    },
+    "list": 117,
+    "preamble": 0
+  },
+  "ours": {
+    "five": 3367,
+    "alone": {
+      "tracker_read_issue": 371,
+      "code_search": 1110,
+      "code_read_file": 617,
+      "tracker_post_comment": 543,
+      "pulls_open_draft": 726
+    },
+    "list": 2109,
+    "preamble": 0
+  }
+}
