@@ -153,18 +153,22 @@ Write timeouts are covered in Part C.
      the executor refused both calls (`off_plan`) and ended the run. The plan rule also
      rejected six plans, with the writes out of order or a tool left out, before any
      step ran.
-   - **Correct call, misread result: still standing.** `planned-4203-s01` read
-     `src/i18n/en.json`, then named `src/import/csv.ts`, a file that does not exist.
-     `planned-4204-s02` read the same file and concluded `file: none`. Every call was
-     valid and every result true, but the model drew the wrong conclusion. A better tool
-     surface cannot fix that.
-   - **No call at all: seen in its subtle form.** No execute call came back without a
-     tool call, because each step offers just one tool. But calls the triage needed
-     were never made. Issue 4204's answer is `src/util/dates.ts`. The one run that found
-     it (`planned-4204-s01`) searched for "Monday". The three that missed it never
-     searched for "Monday" on its own. A trace cannot show a call that was never made.
-     Only known answers show it (triage success, 5 of 12). At scale, that needs a task
-     set with known answers (Assignment 7).
+   - **Correct call, misread result: narrowed.** Results now say what they mean. In
+     `planned-4204-s01`, `-s03` and `-s04`, a search came back `count: 0,
+     query_valid: true`. Each time the model read it as "nothing matched" and searched
+     again with a broader query. It did not take it as an error, or as proof the code
+     does not exist. The starter returned the same "No matches." for a malformed query.
+     Narrowed, not gone: `planned-4203-s01` read `src/i18n/en.json`, then named
+     `src/import/csv.ts`, a file that does not exist.
+   - **No call at all: still standing, and we saw it.** No execute call came back
+     without a tool call, because each step offers just one tool. But calls the triage
+     needed were never made. Issue 4204's answer is `src/util/dates.ts`. The one run
+     that found it (`planned-4204-s01`) searched for "Monday". The three that missed it
+     never searched for "Monday" on its own, and every call they did make succeeded.
+     Tool design cannot fix a call the model never makes. A trace cannot show it
+     either: the run completes, and nothing in it marks the missing call. Only known
+     answers show it (triage success, 5 of 12). At scale, that needs a task set with
+     known answers (Assignment 7).
 
 4. Every prediction in `reports/PREDICTIONS_03.md` that missed, and why:
 
